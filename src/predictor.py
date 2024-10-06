@@ -2,14 +2,25 @@ from ultralytics import YOLO
 import numpy as np
 import cv2
 from shapely.geometry import Polygon, box
-from src.models import Detection, PredictionType, Segmentation
+from src.models import Detection, PredictionType, Segmentation, PersonType
 from src.config import get_settings
 
 SETTINGS = get_settings()
 
 
-def match_gun_bbox(segment: list[list[int]], bboxes: list[list[int]], max_distance: int = 10) -> list[int] | None:
+def match_gun_bbox(
+    segment: list[list[int]], bboxes: list[list[int]], max_distance: int = 10
+) -> list[int] | None:
     matched_box = None
+    polygon_segment: Polygon = Polygon(((point[0], point[1]) for point in segment))
+    gun_boxes: list[Polygon] = [
+        box(bbox[0], bbox[2], bbox[1], bbox[3]) for bbox in bboxes
+    ]
+
+    for gun_box in gun_boxes:
+        if gun_box.distance(polygon_segment) < max_distance:
+            matched_box = gun_box
+
     ### ========================== ###
     ### SU IMPLEMENTACION AQUI     ###
     ### ========================== ###
@@ -20,9 +31,11 @@ def match_gun_bbox(segment: list[list[int]], bboxes: list[list[int]], max_distan
 def annotate_detection(image_array: np.ndarray, detection: Detection) -> np.ndarray:
     ann_color = (255, 0, 0)
     annotated_img = image_array.copy()
-    for label, conf, box in zip(detection.labels, detection.confidences, detection.boxes):
+    for label, conf, box in zip(
+        detection.labels, detection.confidences, detection.boxes
+    ):
         x1, y1, x2, y2 = box
-        cv2.rectangle(annotated_img, (x1, y1), (x2,y2), ann_color, 3)
+        cv2.rectangle(annotated_img, (x1, y1), (x2, y2), ann_color, 3)
         cv2.putText(
             annotated_img,
             f"{label}: {conf:.1f}",
@@ -35,11 +48,45 @@ def annotate_detection(image_array: np.ndarray, detection: Detection) -> np.ndar
     return annotated_img
 
 
-def annotate_segmentation(image_array: np.ndarray, segmentation: Segmentation, draw_boxes: bool = True) -> np.ndarray:
+def annotate_segmentation(
+    image_array: np.ndarray, segmentation: Segmentation, draw_boxes: bool = True
+) -> np.ndarray:
+    red_color = (255, 0, 0)
+    green_color = (0, 255, 0)
+
+    masked_img = image_array.copy()
+
+    for area, label in zip(
+        segmentation.polygons, segmentation.labels
+    ):
+        final_color = red_color if label == PersonType.danger else green_color
+        masked_img = cv2.fillPoly(masked_img, [np.array(area, dtype=np.int32)], final_color)
+
+    annotated_img = image_array.copy()
+    
+    if draw_boxes:
+        for box, label in zip(
+            segmentation.boxes, segmentation.labels
+        ):
+            final_color = red_color if label == PersonType.danger else green_color
+            x1, y1, x2, y2 = box
+            annotated_img = cv2.rectangle(annotated_img, (x1, y1), (x2, y2), final_color, 3)
+            annotated_img = cv2.putText(
+                annotated_img,
+                f"{label}",
+                (x1, y1 - 5),
+                cv2.FONT_HERSHEY_SIMPLEX,
+                1,
+                final_color,
+                1,
+            )
+        
+    annotated_img = cv2.addWeighted(annotated_img, 0.4, masked_img, 0.6, 0)
+
     ### ========================== ###
     ### SU IMPLEMENTACION AQUI     ###
     ### ========================== ###
-    return image_array
+    return annotated_img
 
 
 class GunDetector:
@@ -52,9 +99,7 @@ class GunDetector:
     def detect_guns(self, image_array: np.ndarray, threshold: float = 0.5):
         results = self.od_model(image_array, conf=threshold)[0]
         labels = results.boxes.cls.tolist()
-        indexes = [
-            i for i in range(len(labels)) if labels[i] in [3, 4]
-        ]  # 0 = "person"
+        indexes = [i for i in range(len(labels)) if labels[i] in [3, 4]]  # 0 = "person"
         boxes = [
             [int(v) for v in box]
             for i, box in enumerate(results.boxes.xyxy.tolist())
@@ -63,9 +108,7 @@ class GunDetector:
         confidences = [
             c for i, c in enumerate(results.boxes.conf.tolist()) if i in indexes
         ]
-        labels_txt = [
-            results.names[labels[i]] for i in indexes
-        ]
+        labels_txt = [results.names[labels[i]] for i in indexes]
         return Detection(
             pred_type=PredictionType.object_detection,
             n_detections=len(boxes),
@@ -73,16 +116,42 @@ class GunDetector:
             labels=labels_txt,
             confidences=confidences,
         )
-    
-    def segment_people(self, image_array: np.ndarray, threshold: float = 0.5, max_distance: int = 10):
-        ### ========================== ###
-        ### SU IMPLEMENTACION AQUI     ###
-        ### ========================== ###
+
+    def segment_people(
+        self, image_array: np.ndarray, threshold: float = 0.5, max_distance: int = 10
+    ):
+        persons_segments = self.seg_model(image_array, conf=threshold)[0]
+
+        labels = persons_segments.boxes.cls.tolist()
+        indexes = [
+            i for i in range(len(labels)) if labels[i] == 0
+        ]  # Dado que 0 representa personas
+        boxes = [
+            [int(v) for v in box]
+            for i, box in enumerate(persons_segments.boxes.xyxy.numpy())
+            if i in indexes
+        ]
+
+        polygons = []
+
+        for mask in persons_segments.masks.xy:
+            polygons.append(mask.astype(int))
+
+        guns_boxes = self.detect_guns(image_array, threshold).boxes
+
+        labels_txt = []
+
+        for polygon in polygons:
+            gun_matched = match_gun_bbox(polygon, guns_boxes, max_distance)
+            if gun_matched:
+                labels_txt.append(PersonType.danger)
+            else:
+                labels_txt.append(PersonType.safe)
 
         return Segmentation(
             pred_type=PredictionType.segmentation,
-            n_detections=0,
-            polygons=[],
-            boxes=[],
-            labels=[]
+            n_detections=len(boxes),
+            polygons=polygons,
+            boxes=boxes,
+            labels=labels_txt,
         )
