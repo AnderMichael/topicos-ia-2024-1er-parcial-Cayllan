@@ -9,11 +9,10 @@ from src.predictor import (
     GunDetector,
     Detection,
     Segmentation,
-    GeneralDetect,
     annotate_detection,
     annotate_segmentation,
     define_guns,
-    define_people
+    define_people,
 )
 from src.config import get_settings
 from src.models import GeneralDetect, Gun, Person
@@ -51,7 +50,7 @@ def detect_uploadfile(
 
 
 def segmentation_uploadfile(
-    detector: GunDetector, file, threshold
+    detector: GunDetector, file, threshold, max_distance: int = 10
 ) -> tuple[Segmentation, np.ndarray]:
     img_stream = io.BytesIO(file.file.read())
     if file.content_type.split("/")[0] != "image":
@@ -68,11 +67,11 @@ def segmentation_uploadfile(
         )
     # crear array de numpy
     img_array = np.array(img_obj)
-    return detector.segment_people(img_array, threshold), img_array
+    return detector.segment_people(img_array, threshold, max_distance), img_array
 
 
 def detect_segmentation_uploadfile(
-    detector: GunDetector, file, threshold
+    detector: GunDetector, file, threshold, max_distance: int = 10
 ) -> tuple[Detection, Segmentation, np.ndarray]:
     img_stream = io.BytesIO(file.file.read())
     if file.content_type.split("/")[0] != "image":
@@ -91,7 +90,7 @@ def detect_segmentation_uploadfile(
     img_array = np.array(img_obj)
     return (
         detector.detect_guns(img_array, threshold),
-        detector.segment_people(img_array, threshold),
+        detector.segment_people(img_array, threshold, max_distance),
         img_array,
     )
 
@@ -137,8 +136,9 @@ def detect_people(
     threshold: float = 0.5,
     file: UploadFile = File(...),
     detector: GunDetector = Depends(get_gun_detector),
+    max_distance: int = 10,
 ) -> Segmentation:
-    segmentation, _ = segmentation_uploadfile(detector, file, threshold)
+    segmentation, _ = segmentation_uploadfile(detector, file, threshold, max_distance)
     return segmentation
 
 
@@ -147,9 +147,10 @@ def annotate_people(
     threshold: float = 0.5,
     file: UploadFile = File(...),
     detector: GunDetector = Depends(get_gun_detector),
+    max_distance: int = 10,
 ) -> Response:
     segmentation, image_array = segmentation_uploadfile(detector, file, threshold)
-    annotated_img = annotate_segmentation(image_array, segmentation)
+    annotated_img = annotate_segmentation(image_array, segmentation, max_distance)
     img_pil = Image.fromarray(annotated_img)
     image_stream = io.BytesIO()
     img_pil.save(image_stream, format="JPEG")
@@ -162,9 +163,10 @@ def detect(
     threshold: float = 0.5,
     file: UploadFile = File(...),
     detector: GunDetector = Depends(get_gun_detector),
+    max_distance: int = 10,
 ) -> GeneralDetect:
     detection, segmentation, _ = detect_segmentation_uploadfile(
-        detector, file, threshold
+        detector, file, threshold, max_distance
     )
     general_detection = GeneralDetect(detection=detection, segmentation=segmentation)
     return general_detection
@@ -175,18 +177,19 @@ def annotate(
     threshold: float = 0.5,
     file: UploadFile = File(...),
     detector: GunDetector = Depends(get_gun_detector),
+    max_distance: int = 10,
 ) -> Response:
     detection, segmentation, image_array = detect_segmentation_uploadfile(
         detector, file, threshold
     )
     annotated_img = annotate_detection(image_array, detection)
-    annotated_img = annotate_segmentation(annotated_img, segmentation)
+    annotated_img = annotate_segmentation(annotated_img, segmentation, max_distance)
     # guns = define_guns(detection)
     # for gun in guns:
-    #     annotated_img = cv2.circle(annotated_img, (gun.location.x, gun.location.y), 10, (0, 0, 255), 2) 
+    #     annotated_img = cv2.circle(annotated_img, (gun.location.x, gun.location.y), 10, (0, 0, 255), 2)
     # people = define_people(segmentation)
     # for person in people:
-    #     annotated_img = cv2.circle(annotated_img, (person.location.x, person.location.y), 10, (0, 0, 255), 2) 
+    #     annotated_img = cv2.circle(annotated_img, (person.location.x, person.location.y), 10, (0, 0, 255), 2)
     img_pil = Image.fromarray(annotated_img)
     image_stream = io.BytesIO()
     img_pil.save(image_stream, format="JPEG")
@@ -200,7 +203,7 @@ def guns(
     file: UploadFile = File(...),
     detector: GunDetector = Depends(get_gun_detector),
 ) -> list[Gun]:
-    detection, _ = detect_uploadfile(detector, file, threshold) 
+    detection, _ = detect_uploadfile(detector, file, threshold)
     guns = define_guns(detection)
     return guns
 
@@ -210,11 +213,11 @@ def people(
     threshold: float = 0.5,
     file: UploadFile = File(...),
     detector: GunDetector = Depends(get_gun_detector),
+    max_distance: int = 10,
 ) -> list[Person]:
-    segmentation, _ = segmentation_uploadfile(detector, file, threshold)
+    segmentation, _ = segmentation_uploadfile(detector, file, threshold, max_distance)
     people = define_people(segmentation)
     return people
-
 
 
 if __name__ == "__main__":
