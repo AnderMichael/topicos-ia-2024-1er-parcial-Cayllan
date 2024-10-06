@@ -40,6 +40,9 @@ class Segmentation(GeneralPrediction):
     boxes: list[list[int]]
     labels: list[str]
 
+class GeneralDetect(BaseModel):
+    segmentation: Segmentation
+    detection: Detection
 
 class Gun(BaseModel):
     gun_type: GunType

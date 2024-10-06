@@ -2,11 +2,53 @@ from ultralytics import YOLO
 import numpy as np
 import cv2
 from shapely.geometry import Polygon, box
-from src.models import Detection, PredictionType, Segmentation, PersonType
+from src.models import (
+    Detection,
+    PredictionType,
+    Segmentation,
+    PersonType,
+    Gun,
+    Person,
+    GunType,
+    PixelLocation,
+)
 from src.config import get_settings
 
 SETTINGS = get_settings()
 
+
+def define_guns(detection: Detection):
+    guns: list[Gun] = []
+    for i, gun_box in enumerate(detection.boxes):
+        gs_box = box(gun_box[0], gun_box[1], gun_box[2], gun_box[3])
+        location = gs_box.centroid
+        gun = Gun(
+            gun_type=(
+                GunType.pistol
+                if detection.labels[i] == "Pistol"
+                else GunType.rifle
+            ),
+            location=PixelLocation(x=int(location.x), y=int(location.y)),
+        )
+        guns.append(gun)
+    return guns
+
+def define_people(segmentation: Segmentation):
+    people: list[Person] = []
+    for i, person_box in enumerate(segmentation.polygons):
+        polygon_segment: Polygon = Polygon(((point[0], point[1]) for point in person_box))
+        location = polygon_segment.centroid
+        person = Person(
+            person_type=(
+                PersonType.danger
+                if segmentation.labels[i] == PersonType.danger
+                else PersonType.safe
+            ),
+            location=PixelLocation(x=int(location.x), y=int(location.y)),
+            area=int(polygon_segment.area)
+        )
+        people.append(person)
+    return people
 
 def match_gun_bbox(
     segment: list[list[int]], bboxes: list[list[int]], max_distance: int = 10
@@ -21,15 +63,11 @@ def match_gun_bbox(
         if gun_box.distance(polygon_segment) < max_distance:
             matched_box = gun_box
 
-    ### ========================== ###
-    ### SU IMPLEMENTACION AQUI     ###
-    ### ========================== ###
-
     return matched_box
 
 
 def annotate_detection(image_array: np.ndarray, detection: Detection) -> np.ndarray:
-    ann_color = (255, 0, 0)
+    ann_color = (0, 0, 255)
     annotated_img = image_array.copy()
     for label, conf, box in zip(
         detection.labels, detection.confidences, detection.boxes
@@ -41,9 +79,9 @@ def annotate_detection(image_array: np.ndarray, detection: Detection) -> np.ndar
             f"{label}: {conf:.1f}",
             (x1, y1 - 5),
             cv2.FONT_HERSHEY_SIMPLEX,
-            2,
+            1,
             ann_color,
-            2,
+            1,
         )
     return annotated_img
 
@@ -56,21 +94,21 @@ def annotate_segmentation(
 
     masked_img = image_array.copy()
 
-    for area, label in zip(
-        segmentation.polygons, segmentation.labels
-    ):
+    for area, label in zip(segmentation.polygons, segmentation.labels):
         final_color = red_color if label == PersonType.danger else green_color
-        masked_img = cv2.fillPoly(masked_img, [np.array(area, dtype=np.int32)], final_color)
+        masked_img = cv2.fillPoly(
+            masked_img, [np.array(area, dtype=np.int32)], final_color
+        )
 
     annotated_img = image_array.copy()
-    
+
     if draw_boxes:
-        for box, label in zip(
-            segmentation.boxes, segmentation.labels
-        ):
+        for box, label in zip(segmentation.boxes, segmentation.labels):
             final_color = red_color if label == PersonType.danger else green_color
             x1, y1, x2, y2 = box
-            annotated_img = cv2.rectangle(annotated_img, (x1, y1), (x2, y2), final_color, 3)
+            annotated_img = cv2.rectangle(
+                annotated_img, (x1, y1), (x2, y2), final_color, 3
+            )
             annotated_img = cv2.putText(
                 annotated_img,
                 f"{label}",
@@ -80,12 +118,8 @@ def annotate_segmentation(
                 final_color,
                 1,
             )
-        
-    annotated_img = cv2.addWeighted(annotated_img, 0.4, masked_img, 0.6, 0)
 
-    ### ========================== ###
-    ### SU IMPLEMENTACION AQUI     ###
-    ### ========================== ###
+    annotated_img = cv2.addWeighted(annotated_img, 0.4, masked_img, 0.6, 0)
     return annotated_img
 
 
@@ -133,9 +167,9 @@ class GunDetector:
         ]
 
         polygons = []
-
-        for mask in persons_segments.masks.xy:
-            polygons.append(mask.astype(int))
+        if persons_segments.masks:
+            for mask in persons_segments.masks.xy:
+                polygons.append(mask.astype(int))
 
         guns_boxes = self.detect_guns(image_array, threshold).boxes
 
