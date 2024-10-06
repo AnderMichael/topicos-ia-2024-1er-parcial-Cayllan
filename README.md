@@ -60,3 +60,13 @@ Este endpoint deberá devolver una lista de objetos de tipo Gun con la informaci
 
 ### POST: /people
 Este endpoint deberá devolver una lista de objetos de tipo Person con la información de la categoría de la persona, ubicación y área en pixeles ocupada por el segmento. La ubicación corresponde con el centro del segmento. El objeto está declarado como Person en el archivo src.models
+
+
+# Instrucciones para ejecutar el proyecto
+Ejecutar el siguiente comando en la terminal
+
+```
+fastapi dev src/main.py
+```
+
+Dirigirse a http://localhost:8000/docs for interactuar con la aplicación

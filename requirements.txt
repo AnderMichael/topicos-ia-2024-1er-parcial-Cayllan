@@ -1,0 +1,8 @@
+uvicorn
+pydantic
+ultralytics
+shapely
+opencv-python
+pydantic_settings
+pillow
+fastapi[standard]
