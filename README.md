@@ -1,5 +1,7 @@
 # topicos-ia-2024-1er-parcial
 
+**Nombre:** Ander Michael Cayllan Mamani
+**Código:** 63428
 
 ## instrucciones
 
@@ -70,3 +72,10 @@ fastapi dev src/main.py
 ```
 
 Dirigirse a http://localhost:8000/docs for interactuar con la aplicación
+
+Ejecutar el siguiente comando en la terminal para verificar los tests
+
+```
+pytest tests/test_api.py
+pytest tests/test_predictor.py
+```

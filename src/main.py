@@ -184,12 +184,6 @@ def annotate(
     )
     annotated_img = annotate_detection(image_array, detection)
     annotated_img = annotate_segmentation(annotated_img, segmentation, max_distance)
-    # guns = define_guns(detection)
-    # for gun in guns:
-    #     annotated_img = cv2.circle(annotated_img, (gun.location.x, gun.location.y), 10, (0, 0, 255), 2)
-    # people = define_people(segmentation)
-    # for person in people:
-    #     annotated_img = cv2.circle(annotated_img, (person.location.x, person.location.y), 10, (0, 0, 255), 2)
     img_pil = Image.fromarray(annotated_img)
     image_stream = io.BytesIO()
     img_pil.save(image_stream, format="JPEG")
