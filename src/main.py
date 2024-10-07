@@ -148,9 +148,10 @@ def annotate_people(
     file: UploadFile = File(...),
     detector: GunDetector = Depends(get_gun_detector),
     max_distance: int = 10,
+    draw_boxes: bool = True
 ) -> Response:
-    segmentation, image_array = segmentation_uploadfile(detector, file, threshold)
-    annotated_img = annotate_segmentation(image_array, segmentation, max_distance)
+    segmentation, image_array = segmentation_uploadfile(detector, file, threshold, max_distance)
+    annotated_img = annotate_segmentation(image_array, segmentation, draw_boxes)
     img_pil = Image.fromarray(annotated_img)
     image_stream = io.BytesIO()
     img_pil.save(image_stream, format="JPEG")
@@ -178,12 +179,13 @@ def annotate(
     file: UploadFile = File(...),
     detector: GunDetector = Depends(get_gun_detector),
     max_distance: int = 10,
+    draw_boxes: bool =True
 ) -> Response:
     detection, segmentation, image_array = detect_segmentation_uploadfile(
-        detector, file, threshold
+        detector, file, threshold, max_distance
     )
     annotated_img = annotate_detection(image_array, detection)
-    annotated_img = annotate_segmentation(annotated_img, segmentation, max_distance)
+    annotated_img = annotate_segmentation(annotated_img, segmentation, draw_boxes)
     img_pil = Image.fromarray(annotated_img)
     image_stream = io.BytesIO()
     img_pil.save(image_stream, format="JPEG")
